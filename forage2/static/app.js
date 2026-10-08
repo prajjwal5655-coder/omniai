@@ -1,6 +1,6 @@
 /**
  * OmniLearn AI — Interactive STEM Tutor Web Client
- * LiveKit WebRTC Voice & Chat Client, VS Code Studio, Teacher Whiteboard, & Live Notes
+ * LiveKit WebRTC Voice & Chat Client, VS Code Studio, Teacher Whiteboard & AI Vision Engine, Live Notes
  */
 
 class OmniLearnApp {
@@ -31,6 +31,9 @@ class OmniLearnApp {
     this.wbTool = 'pen'; // 'pen' | 'eraser'
     this.lastX = 0;
     this.lastY = 0;
+    this.userStrokes = []; // Array of strokes: [{points: [{x,y}], color, size}]
+    this.currentStroke = null;
+    this.lastDetectedGeometry = null;
 
     // Saved Notes List
     this.savedNotes = [];
@@ -51,6 +54,7 @@ class OmniLearnApp {
       serverUrlDisplay: document.getElementById('serverUrlDisplay'),
       notesCountBadge: document.getElementById('notesCountBadge'),
       sidebarNotesCount: document.getElementById('sidebarNotesCount'),
+      boardLiveBadge: document.getElementById('boardLiveBadge'),
 
       // Voice Stage
       connectBtn: document.getElementById('connectBtn'),
@@ -68,13 +72,18 @@ class OmniLearnApp {
 
       // Teacher Whiteboard
       whiteboardCanvas: document.getElementById('whiteboardCanvas'),
+      boardScanLine: document.getElementById('boardScanLine'),
       toolPen: document.getElementById('toolPen'),
       toolEraser: document.getElementById('toolEraser'),
       colorBtns: document.querySelectorAll('.color-btn'),
       btnClearBoard: document.getElementById('btnClearBoard'),
       btnDownloadBoard: document.getElementById('btnDownloadBoard'),
-      btnDrawLinkedList: document.getElementById('btnDrawLinkedList'),
+      btnScanAndExplain: document.getElementById('btnScanAndExplain'),
+      btnDrawProjectile: document.getElementById('btnDrawProjectile'),
+      btnDrawVector: document.getElementById('btnDrawVector'),
+      btnDrawFBD: document.getElementById('btnDrawFBD'),
       btnDrawCircuit: document.getElementById('btnDrawCircuit'),
+      btnDrawLinkedList: document.getElementById('btnDrawLinkedList'),
       btnDrawTree: document.getElementById('btnDrawTree'),
       boardStatusText: document.getElementById('boardStatusText'),
 
@@ -86,6 +95,7 @@ class OmniLearnApp {
       btnClearCode: document.getElementById('btnClearCode'),
       terminalOutput: document.getElementById('terminalOutput'),
       btnClearTerminal: document.getElementById('btnClearTerminal'),
+      codeCountBadge: document.getElementById('codeCountBadge'),
 
       // Notes Stage
       notesGrid: document.getElementById('notesGrid'),
@@ -289,7 +299,7 @@ class OmniLearnApp {
       this.dom.connectBtn.classList.add('connected');
       this.dom.connectBtn.disabled = false;
       this.dom.agentStateText.textContent = 'OmniLearn is Listening';
-      this.dom.agentSubtext.textContent = 'Speak into your microphone or type in chat';
+      this.dom.agentSubtext.textContent = 'Speak into your microphone, type, or use the Whiteboard';
 
     } catch (err) {
       console.error('Connection error:', err);
@@ -335,7 +345,7 @@ class OmniLearnApp {
   }
 
   setupRoomListeners() {
-    // Participant subscribed audio track
+    // Audio track received
     this.room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
       if (track.kind === LivekitClient.Track.Kind.Audio) {
         console.log('🔊 Subscribed to AI Audio Track');
@@ -350,12 +360,20 @@ class OmniLearnApp {
       track.detach();
     });
 
-    // Data Channel & Transcripts
+    // Data Channel & Whiteboard Draw Commands
     this.room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant, kind, topic) => {
       try {
         const textDecoder = new TextDecoder();
         const str = textDecoder.decode(payload);
         const data = JSON.parse(str);
+
+        // Handle AI Whiteboard Drawing & Writing Commands
+        if (data.action === 'draw' || data.action === 'write' || data.action === 'clear' || topic === 'lk.board') {
+          console.log('🎨 Received AI Whiteboard Command:', data);
+          this.executeAIWhiteboardDraw(data);
+          return;
+        }
+
         if (data.message || data.text) {
           this.handleIncomingAgentResponse(data.message || data.text);
         }
@@ -434,7 +452,7 @@ class OmniLearnApp {
       // 2. Check for Lecture Notes & Formulas and save to Notebook
       this.extractAndSaveNotes(text);
 
-      // 3. Trigger Whiteboard auto-drawing if diagrams/equations are detected
+      // 3. Trigger Whiteboard auto-drawing if diagrams/equations are detected in speech
       this.autoDrawOnWhiteboard(text);
     }
   }
@@ -446,7 +464,6 @@ class OmniLearnApp {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Format content with Marked.js if agent, else plain text
     let formattedHtml = text;
     if (sender === 'agent' && typeof marked !== 'undefined') {
       try {
@@ -463,7 +480,6 @@ class OmniLearnApp {
       <span class="msg-meta">${sender === 'user' ? 'You' : 'OmniLearn'} • ${timeStr}</span>
     `;
 
-    // Syntax highlight any inline code blocks in the chat bubble
     if (typeof hljs !== 'undefined') {
       msgDiv.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block);
@@ -483,14 +499,12 @@ class OmniLearnApp {
      VS Code Studio Engine
      -------------------------------------------------------------------------- */
   extractAndUpdateCode(text) {
-    // Look for standard markdown code blocks (```python ... ```) or class/def patterns
     const codeMatch = text.match(/```(?:python|cpp|c|javascript|js)?\n([\s\S]*?)```/);
     if (codeMatch && codeMatch[1]) {
       const codeSnippet = codeMatch[1].trim();
       this.updateCodeEditor(codeSnippet);
       this.showCodeNotification();
     } else if (text.includes('class ') || text.includes('def ') || text.includes('import ')) {
-      // Direct raw code pattern
       const lines = text.split('\n').filter(l => l.trim().length > 0);
       if (lines.length >= 3) {
         this.updateCodeEditor(text);
@@ -505,7 +519,6 @@ class OmniLearnApp {
       hljs.highlightElement(this.dom.codeEditorContent);
     }
 
-    // Auto-update terminal output
     this.dom.terminalOutput.innerHTML = `
       <p class="term-line info">[Loaded into VS Code Studio]</p>
       <p class="term-line success">&gt; python solution.py</p>
@@ -514,8 +527,10 @@ class OmniLearnApp {
   }
 
   showCodeNotification() {
-    this.dom.codeCountBadge.textContent = 'Code Updated';
-    this.dom.codeCountBadge.classList.add('live-pulse');
+    if (this.dom.codeCountBadge) {
+      this.dom.codeCountBadge.textContent = 'Code Updated';
+      this.dom.codeCountBadge.classList.add('live-pulse');
+    }
   }
 
   copyCode() {
@@ -548,7 +563,6 @@ class OmniLearnApp {
      Live Notes Notebook Engine
      -------------------------------------------------------------------------- */
   extractAndSaveNotes(text) {
-    // Check if text has structured notes, formula, or bullet points
     if (text.includes('•') || text.includes('Formula:') || text.includes('Key Takeaway') || text.includes('Step-by-Step')) {
       const titleMatch = text.match(/^([A-Z][^\n•:]+)/);
       const title = titleMatch ? titleMatch[1].trim() : 'Lecture Concept';
@@ -570,12 +584,10 @@ class OmniLearnApp {
   }
 
   renderNotes() {
-    // Update badge counts
     const count = this.savedNotes.length;
     this.dom.notesCountBadge.textContent = count;
     this.dom.sidebarNotesCount.textContent = count;
 
-    // Render in dedicated Notes Grid
     let gridHtml = '';
     this.savedNotes.forEach(n => {
       let formattedBody = n.content.replace(/\n/g, '<br>');
@@ -602,7 +614,6 @@ class OmniLearnApp {
       </div>
     `;
 
-    // Render in Sidebar Notes list
     let sideHtml = '';
     this.savedNotes.forEach(n => {
       sideHtml += `
@@ -650,7 +661,7 @@ class OmniLearnApp {
   }
 
   /* --------------------------------------------------------------------------
-     Teacher Whiteboard Drawing Engine
+     Teacher Whiteboard Drawing, Stroke Tracking & AI Vision Engine
      -------------------------------------------------------------------------- */
   initWhiteboard() {
     this.wbCanvas = this.dom.whiteboardCanvas;
@@ -665,7 +676,7 @@ class OmniLearnApp {
     this.wbCanvas.addEventListener('mouseup', () => this.stopDraw());
     this.wbCanvas.addEventListener('mouseleave', () => this.stopDraw());
 
-    // Touch Events for Tablets/Mobiles
+    // Touch Events
     this.wbCanvas.addEventListener('touchstart', (e) => this.startDrawTouch(e));
     this.wbCanvas.addEventListener('touchmove', (e) => this.drawTouch(e));
     this.wbCanvas.addEventListener('touchend', () => this.stopDraw());
@@ -697,20 +708,55 @@ class OmniLearnApp {
     this.dom.btnClearBoard.addEventListener('click', () => this.clearWhiteboard());
     this.dom.btnDownloadBoard.addEventListener('click', () => this.downloadWhiteboard());
 
-    // Preset Diagrams
-    this.dom.btnDrawLinkedList.addEventListener('click', () => this.drawLinkedListPreset());
-    this.dom.btnDrawCircuit.addEventListener('click', () => this.drawCircuitPreset());
-    this.dom.btnDrawTree.addEventListener('click', () => this.drawBinaryTreePreset());
+    // AI Vision Scan & Solve Button
+    if (this.dom.btnScanAndExplain) {
+      this.dom.btnScanAndExplain.addEventListener('click', () => this.scanAndSolveWhiteboard());
+    }
 
-    // Draw initial sample board
-    this.drawLinkedListPreset();
+    // STEM Preset Diagram Buttons
+    if (this.dom.btnDrawProjectile) {
+      this.dom.btnDrawProjectile.addEventListener('click', () => this.drawProjectileMotionPreset({ velocity: 25, angle: 45 }));
+    }
+    if (this.dom.btnDrawVector) {
+      this.dom.btnDrawVector.addEventListener('click', () => this.drawVectorAdditionPreset());
+    }
+    if (this.dom.btnDrawFBD) {
+      this.dom.btnDrawFBD.addEventListener('click', () => this.drawFreeBodyDiagramPreset());
+    }
+    if (this.dom.btnDrawLinkedList) {
+      this.dom.btnDrawLinkedList.addEventListener('click', () => this.drawLinkedListPreset());
+    }
+    if (this.dom.btnDrawCircuit) {
+      this.dom.btnDrawCircuit.addEventListener('click', () => this.drawCircuitPreset());
+    }
+    if (this.dom.btnDrawTree) {
+      this.dom.btnDrawTree.addEventListener('click', () => this.drawBinaryTreePreset());
+    }
+
+    // Initial Board Demonstration
+    this.drawProjectileMotionPreset({ velocity: 25, angle: 45 });
   }
 
   resizeWhiteboard() {
     if (!this.wbCanvas) return;
     const rect = this.wbCanvas.parentElement.getBoundingClientRect();
-    this.wbCanvas.width = rect.width;
-    this.wbCanvas.height = rect.height;
+    if (rect.width > 0 && rect.height > 0) {
+      // Preserve existing canvas drawings during resize
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = this.wbCanvas.width;
+      tempCanvas.height = this.wbCanvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (this.wbCanvas.width > 0 && this.wbCanvas.height > 0) {
+        tempCtx.drawImage(this.wbCanvas, 0, 0);
+      }
+
+      this.wbCanvas.width = rect.width;
+      this.wbCanvas.height = rect.height;
+
+      if (tempCanvas.width > 0 && tempCanvas.height > 0) {
+        this.wbCtx.drawImage(tempCanvas, 0, 0);
+      }
+    }
   }
 
   getCanvasCoords(e) {
@@ -726,6 +772,14 @@ class OmniLearnApp {
     const coords = this.getCanvasCoords(e);
     this.lastX = coords.x;
     this.lastY = coords.y;
+
+    this.currentStroke = {
+      tool: this.wbTool,
+      color: this.wbColor,
+      size: this.wbSize,
+      points: [{ x: coords.x, y: coords.y }],
+    };
+    this.userStrokes.push(this.currentStroke);
   }
 
   draw(e) {
@@ -736,10 +790,14 @@ class OmniLearnApp {
     this.wbCtx.moveTo(this.lastX, this.lastY);
     this.wbCtx.lineTo(coords.x, coords.y);
     this.wbCtx.strokeStyle = this.wbTool === 'eraser' ? '#111522' : this.wbColor;
-    this.wbCtx.lineWidth = this.wbTool === 'eraser' ? 24 : this.wbSize;
+    this.wbCtx.lineWidth = this.wbTool === 'eraser' ? 28 : this.wbSize;
     this.wbCtx.lineCap = 'round';
     this.wbCtx.lineJoin = 'round';
     this.wbCtx.stroke();
+
+    if (this.currentStroke) {
+      this.currentStroke.points.push({ x: coords.x, y: coords.y });
+    }
 
     this.lastX = coords.x;
     this.lastY = coords.y;
@@ -748,26 +806,113 @@ class OmniLearnApp {
   startDrawTouch(e) {
     e.preventDefault();
     if (e.touches.length > 0) {
-      const touch = e.touches[0];
-      this.startDraw(touch);
+      this.startDraw(e.touches[0]);
     }
   }
 
   drawTouch(e) {
     e.preventDefault();
     if (e.touches.length > 0) {
-      const touch = e.touches[0];
-      this.draw(touch);
+      this.draw(e.touches[0]);
     }
   }
 
   stopDraw() {
-    this.isDrawing = false;
+    if (this.isDrawing) {
+      this.isDrawing = false;
+      this.analyzeDrawingRealtime();
+    }
+  }
+
+  /**
+   * Real-time geometric feature detection on user whiteboard strokes
+   */
+  analyzeDrawingRealtime() {
+    if (this.userStrokes.length === 0) return;
+
+    const allPoints = [];
+    this.userStrokes.forEach(s => {
+      if (s.points && s.points.length > 0) {
+        allPoints.push(...s.points);
+      }
+    });
+
+    if (allPoints.length < 5) return;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    allPoints.forEach(p => {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+    });
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    // Detect Parabolic curvature / Projectile Trajectory
+    // In projectile motion, curve starts low (high Y in canvas), reaches apex (low Y), and descends (high Y)
+    let isParabolic = false;
+    let estimatedAngle = 45;
+
+    for (const stroke of this.userStrokes) {
+      const pts = stroke.points;
+      if (pts.length >= 10) {
+        const startPt = pts[0];
+        const endPt = pts[pts.length - 1];
+        let lowestY = startPt.y;
+        let apexIdx = 0;
+
+        pts.forEach((p, idx) => {
+          if (p.y < lowestY) {
+            lowestY = p.y;
+            apexIdx = idx;
+          }
+        });
+
+        const isApexMiddle = apexIdx > pts.length * 0.2 && apexIdx < pts.length * 0.8;
+        const heightDrop = Math.max(startPt.y, endPt.y) - lowestY;
+
+        if (isApexMiddle && heightDrop > 30) {
+          isParabolic = true;
+          // Estimate tangent launch angle from first 5 points
+          const dx = pts[4].x - pts[0].x;
+          const dy = -(pts[4].y - pts[0].y); // invert canvas Y
+          if (dx !== 0) {
+            const angleDeg = Math.round(Math.abs(Math.atan2(dy, dx) * (180 / Math.PI)));
+            if (angleDeg > 10 && angleDeg < 85) {
+              estimatedAngle = angleDeg;
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    if (isParabolic) {
+      this.lastDetectedGeometry = {
+        type: 'projectile_motion',
+        angle: estimatedAngle,
+        velocity: 25,
+        width: Math.round(width),
+        height: Math.round(height),
+      };
+      this.dom.boardStatusText.textContent = `✨ AI Vision Detected: Projectile Motion Trajectory (Launch θ ≈ ${estimatedAngle}°, Span: ${Math.round(width)}px). Click "Ask AI to Solve Drawing" or speak!`;
+    } else if (width > 60 || height > 60) {
+      this.lastDetectedGeometry = {
+        type: 'vector_resolution',
+        angle: Math.round(Math.atan2(height, width) * (180 / Math.PI)),
+        velocity: 20,
+      };
+      this.dom.boardStatusText.textContent = `✨ AI Vision Detected: Vector / Physics Diagram (Angle ≈ ${this.lastDetectedGeometry.angle}°). Ask OmniLearn to resolve!`;
+    }
   }
 
   clearWhiteboard() {
+    this.userStrokes = [];
+    this.lastDetectedGeometry = null;
     this.wbCtx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
-    this.dom.boardStatusText.textContent = 'Whiteboard Cleared.';
+    this.dom.boardStatusText.textContent = 'Whiteboard Cleared. Draw any diagram or ask OmniLearn AI to illustrate.';
   }
 
   downloadWhiteboard() {
@@ -777,9 +922,113 @@ class OmniLearnApp {
     link.click();
   }
 
+  /* --------------------------------------------------------------------------
+     AI Vision Scan & Multimodal Whiteboard Resolution
+     -------------------------------------------------------------------------- */
+  async scanAndSolveWhiteboard() {
+    // 1. Trigger laser scanning animation
+    this.dom.boardScanLine.classList.add('scanning');
+    this.dom.boardStatusText.textContent = '🔍 AI Vision scanning whiteboard strokes & vector trajectory...';
+
+    // 2. Extract detected geometry or use default projectile motion
+    const geom = this.lastDetectedGeometry || {
+      type: 'projectile_motion',
+      angle: 45,
+      velocity: 25,
+    };
+
+    const diagramType = geom.type || 'projectile_motion';
+    const angle = geom.angle || 45;
+    const velocity = geom.velocity || 25;
+
+    const prompt = `I have drawn a ${diagramType.replace('_', ' ')} on the teacher whiteboard with launch angle approximately ~${angle}° and speed ~${velocity} m/s. Please analyze the diagram, resolve horizontal/vertical velocity components (u_x = u·cosθ, u_y = u·sinθ), calculate max height H_max, total flight time T, and Range R, explain step-by-step, and draw the solved diagram on the whiteboard!`;
+
+    // 3. Send over LiveKit DataChannel
+    if (this.room && this.room.localParticipant) {
+      try {
+        const encoder = new TextEncoder();
+        const payload = encoder.encode(JSON.stringify({
+          action: "analyze_board",
+          diagram_type: diagramType,
+          estimated_angle: angle,
+          estimated_velocity: velocity,
+          query: prompt,
+        }));
+        await this.room.localParticipant.publishData(payload, {
+          topic: "lk.board_analysis",
+          reliable: true,
+        });
+      } catch (err) {
+        console.warn('Board analysis send error:', err);
+      }
+    }
+
+    // 4. Send in chat stream
+    this.sendTextMessage(prompt);
+
+    setTimeout(() => {
+      this.dom.boardScanLine.classList.remove('scanning');
+      this.dom.boardStatusText.textContent = `OmniLearn AI analyzed drawing (θ ≈ ${angle}°). Solving and drawing vector trajectory on whiteboard...`;
+      // Auto-render step-by-step physics vector breakdown on board
+      this.drawProjectileMotionPreset({ velocity, angle });
+    }, 1800);
+  }
+
+  /**
+   * Execute drawing commands sent by OmniLearn AI agent
+   */
+  executeAIWhiteboardDraw(data) {
+    // Switch to whiteboard view so the student sees the illustration
+    this.switchStageView('whiteboard');
+
+    if (this.dom.boardLiveBadge) {
+      this.dom.boardLiveBadge.textContent = 'AI Drawing...';
+      setTimeout(() => {
+        if (this.dom.boardLiveBadge) this.dom.boardLiveBadge.textContent = 'Live';
+      }, 3000);
+    }
+
+    if (data.action === 'clear') {
+      this.clearWhiteboard();
+      return;
+    }
+
+    if (data.diagram === 'projectile_motion') {
+      this.drawProjectileMotionPreset(data);
+      this.dom.boardStatusText.textContent = `OmniLearn AI drew: Projectile Motion (u=${data.velocity || 25}m/s, θ=${data.angle || 45}°) with vector components and formula card.`;
+    } else if (data.diagram === 'vector_addition') {
+      this.drawVectorAdditionPreset(data);
+      this.dom.boardStatusText.textContent = 'OmniLearn AI drew: 2D Vector Resolution & Resultant R = A + B.';
+    } else if (data.diagram === 'free_body') {
+      this.drawFreeBodyDiagramPreset(data);
+      this.dom.boardStatusText.textContent = 'OmniLearn AI drew: Free Body Force Diagram on Inclined Plane.';
+    } else if (data.diagram === 'circuit') {
+      this.drawCircuitPreset(data);
+      this.dom.boardStatusText.textContent = "OmniLearn AI drew: Ohm's Law Circuit Analysis.";
+    } else if (data.diagram === 'linked_list') {
+      this.drawLinkedListPreset(data);
+      this.dom.boardStatusText.textContent = 'OmniLearn AI drew: Singly Linked List Data Structure.';
+    } else if (data.diagram === 'binary_tree') {
+      this.drawBinaryTreePreset(data);
+      this.dom.boardStatusText.textContent = 'OmniLearn AI drew: Binary Search Tree Structure.';
+    } else if (data.action === 'write' || data.diagram === 'custom_lecture') {
+      this.drawCustomLectureNotes(data);
+      this.dom.boardStatusText.textContent = `OmniLearn AI wrote lecture notes: ${data.title || 'Equations'}`;
+    }
+  }
+
   autoDrawOnWhiteboard(text) {
     const lower = text.toLowerCase();
-    if (lower.includes('linked list') || lower.includes('node')) {
+    if (lower.includes('projectile') || lower.includes('trajectory') || lower.includes('launch angle') || lower.includes('parabola')) {
+      this.drawProjectileMotionPreset({ velocity: 25, angle: 45 });
+      this.dom.boardStatusText.textContent = 'AI Teacher drew: Projectile Motion & Vector Components (u_x, u_y)';
+    } else if (lower.includes('vector') || lower.includes('resultant') || lower.includes('magnitude') || lower.includes('direction')) {
+      this.drawVectorAdditionPreset();
+      this.dom.boardStatusText.textContent = 'AI Teacher drew: Vector Resolution & Resultant Vector R (A + B)';
+    } else if (lower.includes('free body') || lower.includes('friction') || lower.includes('normal force') || lower.includes('incline')) {
+      this.drawFreeBodyDiagramPreset();
+      this.dom.boardStatusText.textContent = 'AI Teacher drew: Free Body Force Diagram (FBD)';
+    } else if (lower.includes('linked list') || lower.includes('node')) {
       this.drawLinkedListPreset();
       this.dom.boardStatusText.textContent = 'AI Teacher drew: Singly Linked List Data Structure';
     } else if (lower.includes('ohm') || lower.includes('circuit') || lower.includes('voltage')) {
@@ -791,9 +1040,409 @@ class OmniLearnApp {
     }
   }
 
-  /* Preset Teacher Drawings */
-  drawLinkedListPreset() {
+  /* --------------------------------------------------------------------------
+     PRESET STEM DIAGRAMS: Projectile Motion, Vectors, FBD, Circuit, Trees
+     -------------------------------------------------------------------------- */
+
+  drawProjectileMotionPreset(opts = {}) {
     const ctx = this.wbCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
+
+    const u = opts.velocity || 25;
+    const angle = opts.angle || 45;
+    const g = opts.gravity || 9.8;
+    const rad = (angle * Math.PI) / 180;
+    const ux = (u * Math.cos(rad)).toFixed(2);
+    const uy = (u * Math.sin(rad)).toFixed(2);
+    const hmax = ((u * Math.sin(rad)) ** 2 / (2 * g)).toFixed(2);
+    const range = ((u ** 2 * Math.sin(2 * rad)) / g).toFixed(2);
+    const tflight = ((2 * u * Math.sin(rad)) / g).toFixed(2);
+
+    // Title Header
+    ctx.font = 'bold 18px Outfit, sans-serif';
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillText('PROJECTILE MOTION & VECTOR RESOLUTION', 40, 45);
+
+    ctx.font = '13px Inter, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`Initial Speed u = ${u} m/s | Launch Angle θ = ${angle}° | Gravity g = ${g} m/s²`, 40, 70);
+
+    const originX = 90;
+    const originY = 380;
+    const scaleX = 4.8;
+    const scaleY = 7.5;
+
+    // 1. Draw Coordinate Axes (X and Y)
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(originX - 20, originY);
+    ctx.lineTo(originX + 460, originY); // Ground X
+    ctx.moveTo(originX, originY + 20);
+    ctx.lineTo(originX, originY - 240); // Vertical Y
+    ctx.stroke();
+
+    ctx.font = 'bold 13px Fira Code';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('X (Range)', originX + 440, originY + 20);
+    ctx.fillText('Y (Height)', originX - 30, originY - 230);
+
+    // 2. Parabolic Trajectory Curve with Neon Glow
+    ctx.beginPath();
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = 'rgba(0, 229, 255, 0.7)';
+    ctx.shadowBlur = 14;
+
+    const totalSteps = 60;
+    for (let i = 0; i <= totalSteps; i++) {
+      const xVal = (range / totalSteps) * i;
+      const yVal = xVal * Math.tan(rad) - (g * xVal * xVal) / (2 * u * u * Math.cos(rad) * Math.cos(rad));
+      const px = originX + xVal * scaleX;
+      const py = originY - Math.max(0, yVal) * scaleY;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0; // reset glow
+
+    // 3. Velocity Vector u (Neon Emerald Arrow)
+    const arrowLen = 95;
+    const arrowEndX = originX + arrowLen * Math.cos(rad);
+    const arrowEndY = originY - arrowLen * Math.sin(rad);
+
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(arrowEndX, arrowEndY);
+    ctx.stroke();
+
+    this.drawArrowhead(ctx, originX, originY, arrowEndX, arrowEndY, 12, '#10b981');
+
+    ctx.font = 'bold 15px Fira Code';
+    ctx.fillStyle = '#10b981';
+    ctx.fillText(`u = ${u} m/s`, arrowEndX + 8, arrowEndY - 6);
+
+    // 4. Resolved Components: Horizontal ux and Vertical uy
+    // ux (Cyan Arrow along X)
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(originX + arrowLen * Math.cos(rad), originY);
+    ctx.stroke();
+    this.drawArrowhead(ctx, originX, originY, originX + arrowLen * Math.cos(rad), originY, 10, '#06b6d4');
+    ctx.fillStyle = '#06b6d4';
+    ctx.fillText(`u_x = ${ux} m/s (u·cosθ)`, originX + 20, originY + 22);
+
+    // uy (Purple Arrow along Y)
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(originX, arrowEndY);
+    ctx.stroke();
+    this.drawArrowhead(ctx, originX, originY, originX, arrowEndY, 10, '#a855f7');
+    ctx.fillStyle = '#a855f7';
+    ctx.fillText(`u_y = ${uy} m/s`, originX - 95, arrowEndY + 20);
+
+    // Angle θ Arc
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(originX, originY, 35, -rad, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillText(`θ=${angle}°`, originX + 42, originY - 12);
+
+    // 5. Peak Point (H_max) & Velocity at Apex
+    const apexX = originX + (range / 2) * scaleX;
+    const apexY = originY - hmax * scaleY;
+
+    // Peak marker dot
+    ctx.fillStyle = '#f43f5e';
+    ctx.beginPath();
+    ctx.arc(apexX, apexY, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Horizontal velocity at apex
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(apexX, apexY);
+    ctx.lineTo(apexX + 55, apexY);
+    ctx.stroke();
+    this.drawArrowhead(ctx, apexX, apexY, apexX + 55, apexY, 9, '#06b6d4');
+    ctx.fillStyle = '#06b6d4';
+    ctx.font = '12px Fira Code';
+    ctx.fillText(`v = u_x (v_y = 0)`, apexX - 25, apexY - 14);
+
+    // Gravity vector g at peak
+    ctx.strokeStyle = '#f43f5e';
+    ctx.beginPath();
+    ctx.moveTo(apexX, apexY);
+    ctx.lineTo(apexX, apexY + 40);
+    ctx.stroke();
+    this.drawArrowhead(ctx, apexX, apexY, apexX, apexY + 40, 8, '#f43f5e');
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillText('g ↓', apexX + 8, apexY + 28);
+
+    // Dimension lines: H_max dashed line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(apexX, apexY);
+    ctx.lineTo(apexX, originY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`H_max = ${hmax} m`, apexX - 45, (apexY + originY) / 2);
+
+    // Range Marker
+    const endGroundX = originX + range * scaleX;
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillText(`Range R = ${range} m`, (originX + endGroundX) / 2 - 40, originY + 40);
+
+    // 6. Step-by-Step Formulas Card on Right
+    const cardX = 580;
+    const cardY = 90;
+    ctx.fillStyle = 'rgba(18, 22, 36, 0.92)';
+    ctx.strokeStyle = 'rgba(99, 102, 241, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, 330, 255, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 14px Outfit, sans-serif';
+    ctx.fillText('STEP-BY-STEP FORMULAS', cardX + 20, cardY + 30);
+
+    ctx.font = '12px Fira Code, monospace';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(`• u_x = u·cos(θ) = ${ux} m/s`, cardX + 20, cardY + 65);
+    ctx.fillText(`• u_y = u·sin(θ) = ${uy} m/s`, cardX + 20, cardY + 95);
+    ctx.fillText(`• H_max = (u_y)² / (2g) = ${hmax} m`, cardX + 20, cardY + 125);
+    ctx.fillText(`• T = 2·u_y / g = ${tflight} s`, cardX + 20, cardY + 155);
+    ctx.fillText(`• R = u_x · T = ${range} m`, cardX + 20, cardY + 185);
+
+    ctx.fillStyle = '#10b981';
+    ctx.fillText(`Trajectory: y = x·tan(θ) - gx²/(2u_x²)`, cardX + 20, cardY + 225);
+  }
+
+  drawVectorAdditionPreset(opts = {}) {
+    const ctx = this.wbCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
+
+    ctx.font = 'bold 18px Outfit, sans-serif';
+    ctx.fillStyle = '#a855f7';
+    ctx.fillText('2D VECTOR RESOLUTION & ADDITION (R = A + B)', 40, 45);
+
+    const originX = 220;
+    const originY = 260;
+
+    // Coordinate Axes
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(40, originY);
+    ctx.lineTo(originX + 260, originY); // X
+    ctx.moveTo(originX, 60);
+    ctx.lineTo(originX, originY + 140); // Y
+    ctx.stroke();
+
+    ctx.font = 'bold 12px Fira Code';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('+X', originX + 245, originY - 8);
+    ctx.fillText('+Y', originX + 8, 75);
+
+    // Vector A (Cyan, 30 deg, mag 130)
+    const radA = Math.PI / 6;
+    const lenA = 130;
+    const ax = originX + lenA * Math.cos(radA);
+    const ay = originY - lenA * Math.sin(radA);
+
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(ax, ay);
+    ctx.stroke();
+    this.drawArrowhead(ctx, originX, originY, ax, ay, 12, '#06b6d4');
+    ctx.fillStyle = '#06b6d4';
+    ctx.fillText('Vector A (12u @ 30°)', ax + 10, ay - 5);
+
+    // Vector B (Purple, 80 deg, mag 110)
+    const radB = (80 * Math.PI) / 180;
+    const lenB = 110;
+    const bx = originX + lenB * Math.cos(radB);
+    const by = originY - lenB * Math.sin(radB);
+
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    this.drawArrowhead(ctx, originX, originY, bx, by, 12, '#a855f7');
+    ctx.fillStyle = '#a855f7';
+    ctx.fillText('Vector B (16u @ 80°)', bx - 80, by - 12);
+
+    // Resultant R = A + B (Neon Gold)
+    const rx = ax + (bx - originX);
+    const ry = ay + (by - originY);
+
+    // Parallelogram dashed lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(rx, ry);
+    ctx.moveTo(bx, by);
+    ctx.lineTo(rx, ry);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Resultant Vector R Arrow
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 4;
+    ctx.shadowColor = 'rgba(245, 158, 11, 0.6)';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(rx, ry);
+    ctx.stroke();
+    this.drawArrowhead(ctx, originX, originY, rx, ry, 14, '#f59e0b');
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 15px Fira Code';
+    ctx.fillText('Resultant R = A + B', rx + 12, ry - 8);
+
+    // Formula Card
+    const cardX = 540;
+    const cardY = 90;
+    ctx.fillStyle = 'rgba(18, 22, 36, 0.92)';
+    ctx.strokeStyle = 'rgba(168, 85, 247, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, 340, 230, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 14px Outfit, sans-serif';
+    ctx.fillText('VECTOR ADDITION FORMULAS', cardX + 20, cardY + 30);
+
+    ctx.font = '12px Fira Code, monospace';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText('• A_x = A·cos(θ_A), A_y = A·sin(θ_A)', cardX + 20, cardY + 65);
+    ctx.fillText('• B_x = B·cos(θ_B), B_y = B·sin(θ_B)', cardX + 20, cardY + 95);
+    ctx.fillText('• R_x = A_x + B_x,  R_y = A_y + B_y', cardX + 20, cardY + 125);
+    ctx.fillText('• Magnitude |R| = √(R_x² + R_y²)', cardX + 20, cardY + 155);
+    ctx.fillText('• Direction θ_R = arctan(R_y / R_x)', cardX + 20, cardY + 185);
+  }
+
+  drawFreeBodyDiagramPreset(opts = {}) {
+    const ctx = this.wbCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
+
+    ctx.font = 'bold 18px Outfit, sans-serif';
+    ctx.fillStyle = '#10b981';
+    ctx.fillText('FREE BODY FORCE DIAGRAM (FBD): INCLINED PLANE', 40, 45);
+
+    const inclineX = 80;
+    const inclineY = 340;
+    const inclineW = 380;
+    const inclineH = 180;
+
+    // Incline Wedge
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(inclineX, inclineY);
+    ctx.lineTo(inclineX + inclineW, inclineY);
+    ctx.lineTo(inclineX + inclineW, inclineY - inclineH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Mass Block
+    const blockX = 240;
+    const blockY = 240;
+    ctx.fillStyle = 'rgba(99, 102, 241, 0.4)';
+    ctx.strokeStyle = '#6366f1';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(blockX, blockY, 70, 50, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px Fira Code';
+    ctx.fillText('m=10kg', blockX + 10, blockY + 30);
+
+    // Gravity Vector mg ↓
+    ctx.strokeStyle = '#f43f5e';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(blockX + 35, blockY + 25);
+    ctx.lineTo(blockX + 35, blockY + 120);
+    ctx.stroke();
+    this.drawArrowhead(ctx, blockX + 35, blockY + 25, blockX + 35, blockY + 120, 10, '#f43f5e');
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillText('W = mg ↓ (98 N)', blockX + 42, blockY + 115);
+
+    // Normal Force N ↖
+    ctx.strokeStyle = '#00e5ff';
+    ctx.beginPath();
+    ctx.moveTo(blockX + 35, blockY + 25);
+    ctx.lineTo(blockX - 10, blockY - 50);
+    ctx.stroke();
+    this.drawArrowhead(ctx, blockX + 35, blockY + 25, blockX - 10, blockY - 50, 10, '#00e5ff');
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillText('N (Normal Force)', blockX - 85, blockY - 45);
+
+    // Friction Force f ↗
+    ctx.strokeStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.moveTo(blockX + 35, blockY + 25);
+    ctx.lineTo(blockX + 90, blockY - 10);
+    ctx.stroke();
+    this.drawArrowhead(ctx, blockX + 35, blockY + 25, blockX + 90, blockY - 10, 10, '#f59e0b');
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillText('f_k (Friction)', blockX + 70, blockY - 18);
+
+    // Formula Card
+    const cardX = 520;
+    const cardY = 90;
+    ctx.fillStyle = 'rgba(18, 22, 36, 0.92)';
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, 350, 220, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#10b981';
+    ctx.font = 'bold 14px Outfit, sans-serif';
+    ctx.fillText('FORCE RESOLUTION EQUATIONS', cardX + 20, cardY + 30);
+
+    ctx.font = '12px Fira Code, monospace';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText('• Normal Force N = mg·cos(θ) = 84.87 N', cardX + 20, cardY + 65);
+    ctx.fillText('• Downhill Force F_g = mg·sin(θ) = 49.00 N', cardX + 20, cardY + 95);
+    ctx.fillText('• Friction Force f = μ·N = 16.97 N', cardX + 20, cardY + 125);
+    ctx.fillText('• Net Acceleration a = (F_g - f)/m = 3.20 m/s²', cardX + 20, cardY + 155);
+  }
+
+  drawLinkedListPreset(opts = {}) {
+    const ctx = this.wbCtx;
+    if (!ctx) return;
     ctx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
 
     ctx.font = 'bold 18px Outfit, sans-serif';
@@ -816,7 +1465,6 @@ class OmniLearnApp {
     const nodeHeight = 60;
 
     nodes.forEach((node, i) => {
-      // Node Box Outer
       ctx.fillStyle = 'rgba(99, 102, 241, 0.2)';
       ctx.strokeStyle = '#6366f1';
       ctx.lineWidth = 2;
@@ -825,30 +1473,25 @@ class OmniLearnApp {
       ctx.fill();
       ctx.stroke();
 
-      // Divider inside node (Data | Next)
       ctx.beginPath();
       ctx.moveTo(startX + 70, startY);
       ctx.lineTo(startX + 70, startY + nodeHeight);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.stroke();
 
-      // Data Text
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 16px Fira Code, monospace';
       ctx.fillText(node.data, startX + 25, startY + 36);
 
-      // Pointer Dot
       ctx.fillStyle = '#00e5ff';
       ctx.beginPath();
       ctx.arc(startX + 95, startY + 30, 5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Memory Address label above
       ctx.fillStyle = '#64748b';
       ctx.font = '11px Fira Code, monospace';
       ctx.fillText(`[${node.addr}]`, startX + 20, startY - 10);
 
-      // Draw Arrow to next node
       if (i < nodes.length - 1) {
         ctx.strokeStyle = '#00e5ff';
         ctx.lineWidth = 2.5;
@@ -856,16 +1499,8 @@ class OmniLearnApp {
         ctx.moveTo(startX + 95, startY + 30);
         ctx.lineTo(startX + nodeWidth + 40, startY + 30);
         ctx.stroke();
-
-        // Arrow Head
-        ctx.beginPath();
-        ctx.moveTo(startX + nodeWidth + 40, startY + 30);
-        ctx.lineTo(startX + nodeWidth + 30, startY + 24);
-        ctx.lineTo(startX + nodeWidth + 30, startY + 36);
-        ctx.fillStyle = '#00e5ff';
-        ctx.fill();
+        this.drawArrowhead(ctx, startX + 95, startY + 30, startX + nodeWidth + 40, startY + 30, 10, '#00e5ff');
       } else {
-        // Null arrow
         ctx.strokeStyle = '#f43f5e';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -881,9 +1516,15 @@ class OmniLearnApp {
     });
   }
 
-  drawCircuitPreset() {
+  drawCircuitPreset(opts = {}) {
     const ctx = this.wbCtx;
+    if (!ctx) return;
     ctx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
+
+    const v = opts.voltage || 12;
+    const r = opts.resistance || 4;
+    const i = (v / r).toFixed(2);
+    const p = (v * i).toFixed(2);
 
     ctx.font = 'bold 18px Outfit, sans-serif';
     ctx.fillStyle = '#10b981';
@@ -895,26 +1536,46 @@ class OmniLearnApp {
     ctx.rect(100, 120, 300, 200);
     ctx.stroke();
 
-    // Voltage source
     ctx.fillStyle = '#111522';
     ctx.fillRect(80, 190, 40, 60);
     ctx.fillStyle = '#f59e0b';
     ctx.font = 'bold 16px Fira Code';
-    ctx.fillText('+ V -', 82, 225);
+    ctx.fillText(`+ ${v}V -`, 75, 225);
 
-    // Resistor
     ctx.fillStyle = '#111522';
     ctx.fillRect(220, 100, 70, 40);
     ctx.fillStyle = '#a855f7';
-    ctx.fillText('R (Ω)', 230, 126);
+    ctx.fillText(`R = ${r}Ω`, 225, 126);
 
-    // Current Arrow
     ctx.fillStyle = '#10b981';
-    ctx.fillText('→ Current (I) = V / R', 160, 350);
+    ctx.fillText(`→ Current (I) = V / R = ${i} A`, 140, 350);
+
+    // Formula card
+    const cardX = 480;
+    const cardY = 110;
+    ctx.fillStyle = 'rgba(18, 22, 36, 0.92)';
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, 340, 200, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#10b981';
+    ctx.font = 'bold 14px Outfit, sans-serif';
+    ctx.fillText('CIRCUIT CALCULATIONS', cardX + 20, cardY + 30);
+
+    ctx.font = '12px Fira Code, monospace';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(`• Voltage (V): ${v} Volts`, cardX + 20, cardY + 65);
+    ctx.fillText(`• Resistance (R): ${r} Ohms (Ω)`, cardX + 20, cardY + 95);
+    ctx.fillText(`• Current I = V / R: ${i} Amperes`, cardX + 20, cardY + 125);
+    ctx.fillText(`• Power P = V × I: ${p} Watts`, cardX + 20, cardY + 155);
   }
 
-  drawBinaryTreePreset() {
+  drawBinaryTreePreset(opts = {}) {
     const ctx = this.wbCtx;
+    if (!ctx) return;
     ctx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
 
     ctx.font = 'bold 18px Outfit, sans-serif';
@@ -946,12 +1607,10 @@ class OmniLearnApp {
       ctx.stroke();
     };
 
-    // Root: 50
     drawLine(280, 120, 180, 200);
     drawLine(280, 120, 380, 200);
     drawNode('50', 280, 120);
 
-    // Children: 30 & 70
     drawLine(180, 200, 120, 280);
     drawLine(180, 200, 230, 280);
     drawLine(380, 200, 330, 280);
@@ -960,11 +1619,65 @@ class OmniLearnApp {
     drawNode('30', 180, 200);
     drawNode('70', 380, 200);
 
-    // Leaves
     drawNode('20', 120, 280);
     drawNode('40', 230, 280);
     drawNode('60', 330, 280);
     drawNode('80', 430, 280);
+  }
+
+  drawCustomLectureNotes(data) {
+    const ctx = this.wbCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, this.wbCanvas.width, this.wbCanvas.height);
+
+    const title = data.title || 'LECTURE PROBLEM & DERIVATION';
+    const formula = data.formula || '';
+    const steps = data.steps || '';
+    const color = data.color || '#00e5ff';
+
+    // Title Header
+    ctx.font = 'bold 20px Outfit, sans-serif';
+    ctx.fillStyle = color;
+    ctx.fillText(title.toUpperCase(), 40, 50);
+
+    // Formula Banner Card
+    if (formula) {
+      ctx.fillStyle = 'rgba(99, 102, 241, 0.15)';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(40, 75, 620, 55, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px Fira Code, monospace';
+      ctx.fillText(`Formula: ${formula}`, 60, 110);
+    }
+
+    // Step-by-step Notes
+    if (steps) {
+      const stepLines = steps.split('\n').filter(l => l.trim().length > 0);
+      let currentY = formula ? 165 : 95;
+
+      stepLines.forEach((line, idx) => {
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '14px Inter, sans-serif';
+        ctx.fillText(`• ${line}`, 50, currentY);
+        currentY += 32;
+      });
+    }
+  }
+
+  drawArrowhead(ctx, fromX, fromY, toX, toY, headLength, color) {
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
   }
 
   /* --------------------------------------------------------------------------
@@ -1019,11 +1732,9 @@ class OmniLearnApp {
     }
     avgVolume = avgVolume / bars;
 
-    // Scale Orb core with volume
     const scaleFactor = 1 + (avgVolume / 255) * 0.45;
     this.dom.orbCore.style.transform = `scale(${scaleFactor})`;
 
-    // Draw circular audio bars
     for (let i = 0; i < bars; i++) {
       const value = this.dataArray[i] || 0;
       const barHeight = Math.max(4, (value / 255) * 75);

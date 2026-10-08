@@ -191,13 +191,25 @@
 
               <div class="tool-divider"></div>
 
-              <!-- Auto AI Diagram Presets -->
+              <!-- Auto AI STEM Diagram Presets -->
               <div class="tool-group">
-                <button class="action-pill-btn" id="btnDrawLinkedList" title="Draw Linked List Diagram">
-                  <i class="fa-solid fa-diagram-project"></i> <span>Linked List</span>
+                <button class="action-pill-btn ai-highlight" id="btnScanAndExplain" title="AI looks at whiteboard drawing and explains it">
+                  <i class="fa-solid fa-wand-magic-sparkles"></i> <span>Ask AI to Solve Drawing</span>
+                </button>
+                <button class="action-pill-btn" id="btnDrawProjectile" title="Simulate & Draw Projectile Motion">
+                  <i class="fa-solid fa-rocket"></i> <span>Projectile Motion</span>
+                </button>
+                <button class="action-pill-btn" id="btnDrawVector" title="Draw Vector Addition & Components">
+                  <i class="fa-solid fa-arrow-trend-up"></i> <span>Vector Resolution</span>
+                </button>
+                <button class="action-pill-btn" id="btnDrawFBD" title="Draw Free Body Force Diagram">
+                  <i class="fa-solid fa-scale-balanced"></i> <span>Free Body (FBD)</span>
                 </button>
                 <button class="action-pill-btn" id="btnDrawCircuit" title="Draw Circuit Diagram">
                   <i class="fa-solid fa-bolt"></i> <span>Ohm Circuit</span>
+                </button>
+                <button class="action-pill-btn" id="btnDrawLinkedList" title="Draw Linked List Diagram">
+                  <i class="fa-solid fa-diagram-project"></i> <span>Linked List</span>
                 </button>
                 <button class="action-pill-btn" id="btnDrawTree" title="Draw Binary Tree Diagram">
                   <i class="fa-solid fa-network-wired"></i> <span>Binary Tree</span>
@@ -210,12 +222,15 @@
 
           <!-- Whiteboard Canvas Container -->
           <div class="board-canvas-wrapper" id="boardWrapper">
+            <!-- Animated AI Vision Scan Line Overlay -->
+            <div class="board-scan-line" id="boardScanLine"></div>
+
             <canvas id="whiteboardCanvas"></canvas>
             
             <!-- Floating Teacher Board Status Overlay -->
             <div class="board-floating-status" id="boardStatus">
               <span class="pulse-dot"></span>
-              <span id="boardStatusText">Teacher Board Ready. AI drawings and diagrams appear here automatically.</span>
+              <span id="boardStatusText">Teacher Board Ready. Draw any diagram or click "Ask AI to Solve Drawing".</span>
             </div>
           </div>
         </section>

@@ -792,11 +792,50 @@ body {
   border: none;
 }
 
+.action-pill-btn.ai-highlight {
+  background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+  color: #ffffff;
+  border: none;
+  font-weight: 700;
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+  animation: glowBtn 2.5s infinite alternate;
+}
+
+@keyframes glowBtn {
+  0% { box-shadow: 0 0 10px rgba(6, 182, 212, 0.3); transform: scale(1); }
+  100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.65); transform: scale(1.02); }
+}
+
 .action-pill-btn.danger {
   background: rgba(244, 63, 94, 0.15);
   color: var(--accent-rose);
   border-color: rgba(244, 63, 94, 0.3);
 }
+
+.board-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, #00e5ff, #a855f7, transparent);
+  box-shadow: 0 0 15px #00e5ff, 0 0 30px #a855f7;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.board-scan-line.scanning {
+  opacity: 1;
+  animation: scanLaser 2.2s ease-in-out infinite;
+}
+
+@keyframes scanLaser {
+  0% { top: 0%; opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
 
 .board-canvas-wrapper {
   position: relative;
