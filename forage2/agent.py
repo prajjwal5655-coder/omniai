@@ -47,7 +47,7 @@ You are OmniLearn AI, a real-time multimodal accessibility companion and STEM tu
 ==================================================
 - NO LONG PARAGRAPHS: NEVER output dense, continuous paragraph blocks.
 - BULLET-POINT STRUCTURE: Always break down answers into short, bite-sized bullet points or numbered steps.
-- BREVITY FOR TTS: Keep voice responses concise (2 to 4 short sentences maximum per turn) so speech output remains clear and easy to follow.
+- BREVITY & CALM PACING FOR TTS: Keep voice responses concise (2 to 4 short sentences maximum per turn) and speak at a steady, calm, articulate teaching pace so students can easily follow along and take notes.
 - VISUAL SEPARATION: Use bolding for key terms and place double line breaks between distinct points.
 - CODE & MATH: Format all code inside clean standard markdown code blocks with language identifiers (e.g. ```python ... ```) with full indentation and proper line breaks so the VS Code Studio can render it. Format mathematical formulas using clean readable notation or LaTeX.
 - WHITEBOARD TOOLS: Actively call draw_projectile_motion, draw_vector_diagram, draw_free_body_diagram, draw_circuit_diagram, or write_on_whiteboard whenever explaining a visual STEM concept or when the student shows/asks about their whiteboard drawing!
@@ -82,17 +82,31 @@ Would you like me to adjust the launch angle or calculate velocity at a specific
 
 
 class OmniLearnAgent(Agent):
-    def __init__(self) -> None:
+    def __init__(self, room=None) -> None:
         super().__init__(
             instructions=SYSTEM_PROMPT,
             tools=[EndCallTool()],
         )
+        self.room = room
 
     async def on_enter(self) -> None:
         # Greet student immediately when joining the session
         self.session.generate_reply(
-            instructions="Warmly introduce yourself as OmniLearn AI, the STEM tutor and accessibility companion with interactive Teacher Whiteboard and VS Code Studio. Ask what concept, equation, or drawing they'd like help with today."
+            instructions="Warmly introduce yourself as OmniLearn AI, the STEM tutor and accessibility companion with interactive Teacher Whiteboard and VS Code Studio. Speak calmly and ask what concept or problem they'd like help with today."
         )
+
+    async def _publish_board(self, payload: dict, context: RunContext) -> None:
+        try:
+            raw_bytes = json.dumps(payload).encode("utf-8")
+            target_room = self.room
+            if not target_room and hasattr(context, "session") and hasattr(context.session, "room_io"):
+                target_room = getattr(context.session.room_io, "room", None)
+
+            if target_room and target_room.local_participant:
+                await target_room.local_participant.publish_data(raw_bytes, topic="lk.board", reliable=True)
+                logger.info(f"🎨 Published whiteboard event ({payload.get('action')}/{payload.get('diagram')}) to room: {target_room.name}")
+        except Exception as e:
+            logger.warning(f"Failed to publish whiteboard command: {e}")
 
     @function_tool
     async def draw_projectile_motion(
@@ -135,13 +149,7 @@ class OmniLearnAgent(Agent):
             "range": round(r_range, 2),
         }
 
-        # Send drawing command to client whiteboard
-        try:
-            raw_bytes = json.dumps(payload).encode("utf-8")
-            if context.room:
-                await context.room.local_participant.publish_data(raw_bytes, topic="lk.board", reliable=True)
-        except Exception as e:
-            logger.warning(f"Failed to publish projectile command: {e}")
+        await self._publish_board(payload, context)
 
         return (
             f"I have drawn the projectile motion trajectory and vector components on the whiteboard!\n\n"
@@ -194,12 +202,7 @@ class OmniLearnAgent(Agent):
             "rx": round(rx, 2), "ry": round(ry, 2), "rmag": round(r_mag, 2), "rdeg": round(r_deg, 1),
         }
 
-        try:
-            raw_bytes = json.dumps(payload).encode("utf-8")
-            if context.room:
-                await context.room.local_participant.publish_data(raw_bytes, topic="lk.board", reliable=True)
-        except Exception as e:
-            logger.warning(f"Failed to publish vector command: {e}")
+        await self._publish_board(payload, context)
 
         return (
             f"I have drawn the vector coordinate diagram and resultant vector R on the whiteboard!\n\n"
@@ -247,12 +250,7 @@ class OmniLearnAgent(Agent):
             "accel": round(accel, 2),
         }
 
-        try:
-            raw_bytes = json.dumps(payload).encode("utf-8")
-            if context.room:
-                await context.room.local_participant.publish_data(raw_bytes, topic="lk.board", reliable=True)
-        except Exception as e:
-            logger.warning(f"Failed to publish FBD command: {e}")
+        await self._publish_board(payload, context)
 
         return (
             f"I have drawn the Free Body Force Diagram on the whiteboard!\n\n"
@@ -293,12 +291,7 @@ class OmniLearnAgent(Agent):
             "power": round(power, 3),
         }
 
-        try:
-            raw_bytes = json.dumps(payload).encode("utf-8")
-            if context.room:
-                await context.room.local_participant.publish_data(raw_bytes, topic="lk.board", reliable=True)
-        except Exception as e:
-            logger.warning(f"Failed to publish circuit command: {e}")
+        await self._publish_board(payload, context)
 
         return (
             f"I have drawn the circuit schematic on the whiteboard!\n\n"
@@ -333,12 +326,7 @@ class OmniLearnAgent(Agent):
             "steps": steps,
             "color": color,
         }
-        try:
-            raw_bytes = json.dumps(payload).encode("utf-8")
-            if context.room:
-                await context.room.local_participant.publish_data(raw_bytes, topic="lk.board", reliable=True)
-        except Exception as e:
-            logger.warning(f"Failed to publish whiteboard text: {e}")
+        await self._publish_board(payload, context)
 
         return f"I have written the lecture notes and formulas for '{title}' onto the whiteboard."
 
@@ -346,12 +334,7 @@ class OmniLearnAgent(Agent):
     async def clear_whiteboard(self, context: RunContext) -> str:
         """Clear all drawings and text from the teacher whiteboard."""
         payload = {"action": "clear"}
-        try:
-            raw_bytes = json.dumps(payload).encode("utf-8")
-            if context.room:
-                await context.room.local_participant.publish_data(raw_bytes, topic="lk.board", reliable=True)
-        except Exception as e:
-            logger.warning(f"Failed to clear board: {e}")
+        await self._publish_board(payload, context)
 
         return "I have cleared the whiteboard. It is ready for new diagrams and math problems."
 
@@ -369,7 +352,11 @@ async def entrypoint(ctx: JobContext) -> None:
     session: AgentSession = AgentSession(
         stt=inference.STT("deepgram/nova-3", language="multi"),
         llm=inference.LLM("openai/gpt-4.1-mini"),
-        tts=inference.TTS("cartesia/sonic-3", voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"),
+        tts=inference.TTS(
+            "cartesia/sonic-3",
+            voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
+            extra_kwargs={"speed": 0.85},
+        ),
         turn_handling=TurnHandlingOptions(
             interruption={
                 "resume_false_interruption": True,
@@ -438,7 +425,7 @@ async def entrypoint(ctx: JobContext) -> None:
             logger.warning(f"Error handling incoming data: {e}")
 
     await session.start(
-        agent=OmniLearnAgent(),
+        agent=OmniLearnAgent(room=ctx.room),
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(),
