@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova Voice AI | Next-Gen Realtime Voice Assistant</title>
+  <meta name="description" content="Ultra-responsive realtime voice AI assistant powered by LiveKit WebRTC and state of the art models.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- LiveKit Web Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-background">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="glow-orb orb-3"></div>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <div class="app-container">
+    <!-- Navigation Bar -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-waveform-lines"></i>
+          <span class="pulse-ring"></span>
+        </div>
+        <div class="brand-text">
+          <h1>Nova <span>Voice</span></h1>
+          <span class="badge">LiveKit Agents 2.0</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div id="connectionStatus" class="status-pill disconnected">
+          <span class="status-dot"></span>
+          <span class="status-text">Disconnected</span>
+        </div>
+
+        <button id="toggleTranscriptBtn" class="icon-btn" title="Toggle Transcript" aria-label="Toggle Transcript">
+          <i class="fa-solid fa-message-captions"></i>
+        </button>
+
+        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+          <i class="fa-solid fa-sliders"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Stage -->
+    <main class="main-stage">
+      <!-- Left / Center Voice Stage -->
+      <section class="voice-stage">
+        <!-- Agent Identity & Status -->
+        <div class="agent-header">
+          <span class="agent-role">AI VOICE COMPANION</span>
+          <h2 id="agentStateText" class="agent-state-text">Ready to Connect</h2>
+          <p id="agentSubtext" class="agent-subtext">Click start to begin conversational voice interaction</p>
+        </div>
+
+        <!-- Interactive Voice Orb / Audio Visualizer -->
+        <div class="visualizer-wrapper">
+          <div class="orb-container" id="orbContainer">
+            <div class="orb-core" id="orbCore"></div>
+            <div class="orb-halo halo-1"></div>
+            <div class="orb-halo halo-2"></div>
+            <div class="orb-halo halo-3"></div>
+            <canvas id="visualizerCanvas" width="480" height="480"></canvas>
+          </div>
+
+          <!-- Live Spoken Subtitle Banner -->
+          <div class="subtitle-card" id="subtitleCard">
+            <div class="subtitle-speaker" id="subtitleSpeaker">
+              <i class="fa-solid fa-sparkles"></i> <span>Nova</span>
+            </div>
+            <div class="subtitle-content" id="subtitleContent">
+              "Press the connect button below to speak with me."
+            </div>
+          </div>
+        </div>
+
+        <!-- Prompt Suggestions / Shortcuts -->
+        <div class="quick-prompts" id="quickPrompts">
+          <span class="prompts-label"><i class="fa-regular fa-lightbulb"></i> Try asking:</span>
+          <button class="prompt-chip" data-prompt="What is the weather right now?">"What's the weather?"</button>
+          <button class="prompt-chip" data-prompt="What time is it in New York?">"What time is it?"</button>
+          <button class="prompt-chip" data-prompt="Explain quantum computing simply">"Explain quantum computing"</button>
+          <button class="prompt-chip" data-prompt="Tell me an interesting tech fact">"Tell me a fun fact"</button>
+        </div>
+
+        <!-- Primary Call Controls Bar -->
+        <div class="controls-bar">
+          <!-- Mic Mute Toggle -->
+          <button id="micToggleBtn" class="control-btn secondary" disabled title="Toggle Microphone" aria-label="Toggle Microphone">
+            <i class="fa-solid fa-microphone"></i>
+            <span class="btn-label">Mic</span>
+          </button>
+
+          <!-- Main Connect / End Call Button -->
+          <button id="connectBtn" class="control-btn primary" title="Connect to Voice Agent" aria-label="Connect to Voice Agent">
+            <div class="btn-inner">
+              <i class="fa-solid fa-phone"></i>
+              <span id="connectBtnText">Start Call</span>
+            </div>
+          </button>
+
+          <!-- Audio Volume / Output Toggle -->
+          <button id="audioOutputBtn" class="control-btn secondary" title="Audio Output" aria-label="Audio Output">
+            <i class="fa-solid fa-volume-high"></i>
+            <span class="btn-label">Audio</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Right Side Transcript / Telemetry Drawer -->
+      <aside class="transcript-drawer" id="transcriptDrawer">
+        <div class="drawer-header">
+          <div class="drawer-title">
+            <i class="fa-solid fa-list-timeline"></i>
+            <h3>Live Conversation</h3>
+          </div>
+          <button id="closeDrawerBtn" class="icon-btn small" aria-label="Close Drawer">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="transcript-stream" id="transcriptStream">
+          <div class="message system-msg">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>Session ready. Tap Start Call to speak or type below anytime.</span>
+          </div>
+        </div>
+
+        <!-- Interactive Chat Text Input Bar -->
+        <form class="chat-input-container" id="chatForm">
+          <div class="chat-input-wrapper">
+            <input type="text" id="chatInput" placeholder="Type a message to Nova..." autocomplete="off" />
+            <button type="submit" id="chatSendBtn" class="chat-send-btn" title="Send message" aria-label="Send message">
+              <i class="fa-solid fa-paper-plane"></i>
+            </button>
+          </div>
+        </form>
+
+        <!-- Telemetry Stats Footer -->
+        <div class="telemetry-box">
+          <div class="telemetry-item">
+            <span class="telemetry-label">Room</span>
+            <span class="telemetry-value" id="roomNameDisplay">room-demo</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-label">Latency</span>
+            <span class="telemetry-value" id="latencyDisplay">-- ms</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-label">Quality</span>
+            <span class="telemetry-value highlight" id="qualityDisplay">Excellent</span>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Settings Modal -->
+    <div class="modal-backdrop" id="settingsModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-sliders"></i> Session Settings</h3>
+          <button id="closeSettingsBtn" class="icon-btn small" aria-label="Close Settings">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="roomInput">Room Name</label>
+            <input type="text" id="roomInput" value="forage2-voice-room" placeholder="Enter room name">
+          </div>
+          <div class="form-group">
+            <label for="userNameInput">Your Name</label>
+            <input type="text" id="userNameInput" value="User" placeholder="Enter your display name">
+          </div>
+          <div class="form-group">
+            <label for="serverUrlDisplay">LiveKit Gateway URL</label>
+            <input type="text" id="serverUrlDisplay" readonly value="Loading..." class="readonly-input">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="saveSettingsBtn" class="btn btn-primary">Save & Apply</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
