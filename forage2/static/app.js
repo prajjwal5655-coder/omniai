@@ -487,7 +487,11 @@ class OmniLearnApp {
     }
 
     this.dom.transcriptStream.appendChild(msgDiv);
-    this.dom.transcriptStream.scrollTop = this.dom.transcriptStream.scrollHeight;
+    requestAnimationFrame(() => {
+      if (this.dom.transcriptStream) {
+        this.dom.transcriptStream.scrollTop = this.dom.transcriptStream.scrollHeight;
+      }
+    });
   }
 
   setSubtitles(speaker, text) {
