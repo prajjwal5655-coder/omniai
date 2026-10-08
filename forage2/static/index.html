@@ -3,16 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nova Voice AI | Next-Gen Realtime Voice Assistant</title>
-  <meta name="description" content="Ultra-responsive realtime voice AI assistant powered by LiveKit WebRTC and state of the art models.">
+  <title>OmniLearn AI | Real-Time STEM Accessibility Companion & Tutor</title>
+  <meta name="description" content="Real-time multimodal STEM tutor, interactive teacher whiteboard, VS Code-style studio, and live accessible lecture note-maker.">
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Highlight.js for VS Code Syntax Highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+  
+  <!-- Marked.js for Rich Markdown Parsing in Chat -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   
   <!-- LiveKit Web Client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
@@ -28,11 +38,11 @@
   </div>
 
   <div class="app-container">
-    <!-- Navigation Bar -->
+    <!-- Header Navigation -->
     <header class="app-header">
       <div class="brand">
         <div class="brand-icon">
-          <i class="fa-solid fa-waveform-lines"></i>
+          <i class="fa-solid fa-graduation-cap"></i>
           <span class="pulse-ring"></span>
         </div>
         <div class="brand-text">
@@ -41,14 +51,37 @@
         </div>
       </div>
 
+      <!-- Stage Mode Switcher Tabs -->
+      <nav class="mode-nav" aria-label="Workspace Modes">
+        <button class="nav-tab active" data-view="voice" id="tabVoice">
+          <i class="fa-solid fa-microphone-lines"></i>
+          <span>Voice Stage</span>
+        </button>
+        <button class="nav-tab" data-view="whiteboard" id="tabWhiteboard">
+          <i class="fa-solid fa-chalkboard"></i>
+          <span>Teacher Board</span>
+          <span class="nav-badge live-pulse" id="boardLiveBadge">Live</span>
+        </button>
+        <button class="nav-tab" data-view="code" id="tabCode">
+          <i class="fa-solid fa-code"></i>
+          <span>Code Studio</span>
+          <span class="nav-badge" id="codeCountBadge">VS Code</span>
+        </button>
+        <button class="nav-tab" data-view="notes" id="tabNotes">
+          <i class="fa-solid fa-book-bookmark"></i>
+          <span>Live Notes</span>
+          <span class="nav-badge count" id="notesCountBadge">0</span>
+        </button>
+      </nav>
+
       <div class="header-actions">
         <div id="connectionStatus" class="status-pill disconnected">
           <span class="status-dot"></span>
           <span class="status-text">Disconnected</span>
         </div>
 
-        <button id="toggleTranscriptBtn" class="icon-btn" title="Toggle Conversation" aria-label="Toggle Conversation">
-          <i class="fa-solid fa-message-captions"></i>
+        <button id="toggleDrawerBtn" class="icon-btn active" title="Toggle Sidebar" aria-label="Toggle Sidebar">
+          <i class="fa-solid fa-sidebar"></i>
         </button>
 
         <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
@@ -57,115 +90,382 @@
       </div>
     </header>
 
-    <!-- Main Content Stage -->
+    <!-- Main Workspace Stage -->
     <main class="main-stage">
-      <!-- Left / Center Voice Stage -->
-      <section class="voice-stage">
-        <!-- Agent Identity & Status -->
-        <div class="agent-header">
-          <span class="agent-role">REAL-TIME STEM TUTOR & ACCESSIBILITY COMPANION</span>
-          <h2 id="agentStateText" class="agent-state-text">Ready to Learn</h2>
-          <p id="agentSubtext" class="agent-subtext">Speak or type your STEM questions, equations, or lecture concepts</p>
-        </div>
+      
+      <!-- Stage View Container (Left / Center) -->
+      <div class="stage-container">
 
-        <!-- Interactive Voice Orb / Audio Visualizer -->
-        <div class="visualizer-wrapper">
-          <div class="orb-container" id="orbContainer">
-            <div class="orb-core" id="orbCore"></div>
-            <div class="orb-halo halo-1"></div>
-            <div class="orb-halo halo-2"></div>
-            <div class="orb-halo halo-3"></div>
-            <canvas id="visualizerCanvas" width="480" height="480"></canvas>
+        <!-- ============================================================
+             VIEW 1: VOICE & 3D SOUND ORB
+             ============================================================ -->
+        <section class="stage-view active" id="viewVoice">
+          <div class="agent-header">
+            <span class="agent-role">REAL-TIME STEM TUTOR & ACCESSIBILITY COMPANION</span>
+            <h2 id="agentStateText" class="agent-state-text">Ready to Learn</h2>
+            <p id="agentSubtext" class="agent-subtext">Ask questions, request code, or have OmniLearn teach concepts step-by-step</p>
           </div>
 
-          <!-- Live Spoken Subtitle Banner -->
-          <div class="subtitle-card" id="subtitleCard">
-            <div class="subtitle-speaker" id="subtitleSpeaker">
-              <i class="fa-solid fa-sparkles"></i> <span>OmniLearn AI</span>
+          <!-- Interactive 3D Sound Orb & Waveform -->
+          <div class="visualizer-wrapper">
+            <div class="orb-container" id="orbContainer">
+              <div class="orb-core" id="orbCore"></div>
+              <div class="orb-halo halo-1"></div>
+              <div class="orb-halo halo-2"></div>
+              <div class="orb-halo halo-3"></div>
+              <canvas id="visualizerCanvas" width="480" height="480"></canvas>
             </div>
-            <div class="subtitle-content" id="subtitleContent">
-              "Press Start Session to begin your real-time accessible tutoring session."
+
+            <!-- Live Subtitle Banner -->
+            <div class="subtitle-card" id="subtitleCard">
+              <div class="subtitle-speaker" id="subtitleSpeaker">
+                <i class="fa-solid fa-sparkles"></i> <span>OmniLearn AI</span>
+              </div>
+              <div class="subtitle-content" id="subtitleContent">
+                "Press Start Call to begin your interactive STEM tutoring session."
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Prompt Suggestions / Shortcuts -->
-        <div class="quick-prompts" id="quickPrompts">
-          <span class="prompts-label"><i class="fa-regular fa-lightbulb"></i> Try asking:</span>
-          <button class="prompt-chip" data-prompt="Explain Ohm's Law and its formula">"Explain Ohm's Law"</button>
-          <button class="prompt-chip" data-prompt="Summarize Binary Search algorithm step-by-step">"Binary Search steps"</button>
-          <button class="prompt-chip" data-prompt="Explain Kirchhoff's Voltage Law simply">"Kirchhoff's Voltage Law"</button>
-          <button class="prompt-chip" data-prompt="Take structured study notes on this concept">"Make study notes"</button>
-        </div>
-
-        <!-- Primary Call Controls Bar -->
-        <div class="controls-bar">
-          <!-- Mic Mute Toggle -->
-          <button id="micToggleBtn" class="control-btn secondary" disabled title="Toggle Microphone" aria-label="Toggle Microphone">
-            <i class="fa-solid fa-microphone"></i>
-            <span class="btn-label">Mic</span>
-          </button>
-
-          <!-- Main Connect / End Call Button -->
-          <button id="connectBtn" class="control-btn primary" title="Connect to Voice Agent" aria-label="Connect to Voice Agent">
-            <div class="btn-inner">
-              <i class="fa-solid fa-phone"></i>
-              <span id="connectBtnText">Start Call</span>
-            </div>
-          </button>
-
-          <!-- Audio Volume / Output Toggle -->
-          <button id="audioOutputBtn" class="control-btn secondary" title="Audio Output" aria-label="Audio Output">
-            <i class="fa-solid fa-volume-high"></i>
-            <span class="btn-label">Audio</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Right Side Transcript / Telemetry Drawer -->
-      <aside class="transcript-drawer" id="transcriptDrawer">
-        <div class="drawer-header">
-          <div class="drawer-title">
-            <i class="fa-solid fa-list-timeline"></i>
-            <h3>Live Conversation</h3>
+          <!-- STEM Quick Prompts -->
+          <div class="quick-prompts" id="quickPrompts">
+            <span class="prompts-label"><i class="fa-regular fa-lightbulb"></i> Try asking:</span>
+            <button class="prompt-chip" data-prompt="Teach me how to implement a Linked List in Python with node classes">"Code Linked List"</button>
+            <button class="prompt-chip" data-prompt="Explain Ohm's Law with circuit formula and step-by-step notes">"Explain Ohm's Law"</button>
+            <button class="prompt-chip" data-prompt="Explain Binary Search algorithm and write the code">"Binary Search"</button>
+            <button class="prompt-chip" data-prompt="Take structured study notes on Kirchhoff's Voltage Law">"Make Study Notes"</button>
           </div>
-          <button id="closeDrawerBtn" class="icon-btn small" aria-label="Close Drawer">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
 
-        <div class="transcript-stream" id="transcriptStream">
-          <div class="message system-msg">
-            <i class="fa-solid fa-circle-info"></i>
-            <span>Session ready. Tap Start Call to speak or type below anytime.</span>
-          </div>
-        </div>
+          <!-- Main Call Controls Bar -->
+          <div class="controls-bar">
+            <button id="micToggleBtn" class="control-btn secondary" disabled title="Toggle Microphone" aria-label="Toggle Microphone">
+              <i class="fa-solid fa-microphone"></i>
+              <span class="btn-label">Mic</span>
+            </button>
 
-        <!-- Interactive Chat Text Input Bar -->
-        <form class="chat-input-container" id="chatForm">
-          <div class="chat-input-wrapper">
-            <input type="text" id="chatInput" placeholder="Type a message to Nova..." autocomplete="off" />
-            <button type="submit" id="chatSendBtn" class="chat-send-btn" title="Send message" aria-label="Send message">
-              <i class="fa-solid fa-paper-plane"></i>
+            <button id="connectBtn" class="control-btn primary" title="Connect to STEM Tutor" aria-label="Connect to STEM Tutor">
+              <div class="btn-inner">
+                <i class="fa-solid fa-phone"></i>
+                <span id="connectBtnText">Start Call</span>
+              </div>
+            </button>
+
+            <button id="audioOutputBtn" class="control-btn secondary" title="Audio Output" aria-label="Audio Output">
+              <i class="fa-solid fa-volume-high"></i>
+              <span class="btn-label">Audio</span>
             </button>
           </div>
-        </form>
+        </section>
 
-        <!-- Telemetry Stats Footer -->
-        <div class="telemetry-box">
-          <div class="telemetry-item">
-            <span class="telemetry-label">Room</span>
-            <span class="telemetry-value" id="roomNameDisplay">room-demo</span>
+
+        <!-- ============================================================
+             VIEW 2: TEACHER WHITEBOARD
+             ============================================================ -->
+        <section class="stage-view" id="viewWhiteboard">
+          <div class="board-header">
+            <div class="board-title-box">
+              <div class="board-icon-badge"><i class="fa-solid fa-person-chalkboard"></i></div>
+              <div>
+                <h3>AI Teacher Whiteboard</h3>
+                <p>Live visual diagrams, circuit formulas, and step-by-step math problem solving</p>
+              </div>
+            </div>
+
+            <!-- Whiteboard Drawing Toolbar -->
+            <div class="board-toolbar">
+              <div class="tool-group">
+                <button class="tool-btn active" id="toolPen" title="Pen Tool"><i class="fa-solid fa-pen"></i></button>
+                <button class="tool-btn" id="toolEraser" title="Eraser"><i class="fa-solid fa-eraser"></i></button>
+              </div>
+
+              <div class="tool-divider"></div>
+
+              <!-- Color Palette -->
+              <div class="color-palette">
+                <button class="color-btn active" data-color="#00e5ff" style="background: #00e5ff;" title="Neon Cyan"></button>
+                <button class="color-btn" data-color="#a855f7" style="background: #a855f7;" title="Purple"></button>
+                <button class="color-btn" data-color="#10b981" style="background: #10b981;" title="Emerald"></button>
+                <button class="color-btn" data-color="#f59e0b" style="background: #f59e0b;" title="Amber"></button>
+                <button class="color-btn" data-color="#ffffff" style="background: #ffffff;" title="Chalk White"></button>
+              </div>
+
+              <div class="tool-divider"></div>
+
+              <!-- Auto AI Diagram Presets -->
+              <div class="tool-group">
+                <button class="action-pill-btn" id="btnDrawLinkedList" title="Draw Linked List Diagram">
+                  <i class="fa-solid fa-diagram-project"></i> <span>Linked List</span>
+                </button>
+                <button class="action-pill-btn" id="btnDrawCircuit" title="Draw Circuit Diagram">
+                  <i class="fa-solid fa-bolt"></i> <span>Ohm Circuit</span>
+                </button>
+                <button class="action-pill-btn" id="btnDrawTree" title="Draw Binary Tree Diagram">
+                  <i class="fa-solid fa-network-wired"></i> <span>Binary Tree</span>
+                </button>
+                <button class="tool-btn danger" id="btnClearBoard" title="Clear Whiteboard"><i class="fa-solid fa-trash-can"></i></button>
+                <button class="tool-btn" id="btnDownloadBoard" title="Download Whiteboard"><i class="fa-solid fa-download"></i></button>
+              </div>
+            </div>
           </div>
-          <div class="telemetry-item">
-            <span class="telemetry-label">Latency</span>
-            <span class="telemetry-value" id="latencyDisplay">-- ms</span>
+
+          <!-- Whiteboard Canvas Container -->
+          <div class="board-canvas-wrapper" id="boardWrapper">
+            <canvas id="whiteboardCanvas"></canvas>
+            
+            <!-- Floating Teacher Board Status Overlay -->
+            <div class="board-floating-status" id="boardStatus">
+              <span class="pulse-dot"></span>
+              <span id="boardStatusText">Teacher Board Ready. AI drawings and diagrams appear here automatically.</span>
+            </div>
           </div>
-          <div class="telemetry-item">
-            <span class="telemetry-label">Quality</span>
-            <span class="telemetry-value highlight" id="qualityDisplay">Excellent</span>
+        </section>
+
+
+        <!-- ============================================================
+             VIEW 3: VS CODE STYLE CODE STUDIO
+             ============================================================ -->
+        <section class="stage-view" id="viewCode">
+          <div class="vscode-window">
+            <!-- VS Code Title Bar -->
+            <div class="vscode-titlebar">
+              <div class="window-controls">
+                <span class="win-dot close"></span>
+                <span class="win-dot minimize"></span>
+                <span class="win-dot maximize"></span>
+              </div>
+
+              <!-- File Tabs -->
+              <div class="vscode-tabs" id="codeTabs">
+                <div class="vscode-tab active" id="tabMainFile">
+                  <i class="fa-brands fa-python file-icon"></i>
+                  <span id="codeFileName">solution.py</span>
+                  <span class="tab-close"><i class="fa-solid fa-xmark"></i></span>
+                </div>
+                <div class="vscode-tab" id="tabNotesFile">
+                  <i class="fa-solid fa-file-lines file-icon"></i>
+                  <span>lecture_notes.md</span>
+                </div>
+              </div>
+
+              <!-- Code Actions -->
+              <div class="vscode-actions">
+                <button class="code-action-btn" id="btnRunCode" title="Run / Simulate Code">
+                  <i class="fa-solid fa-play"></i> <span>Run</span>
+                </button>
+                <button class="code-action-btn" id="btnCopyCode" title="Copy Code to Clipboard">
+                  <i class="fa-solid fa-copy"></i> <span>Copy</span>
+                </button>
+                <button class="code-action-btn" id="btnClearCode" title="Clear Editor">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- VS Code Editor Body -->
+            <div class="vscode-body">
+              <div class="vscode-editor-scroll">
+                <pre class="vscode-pre"><code class="language-python" id="codeEditorContent"># ==========================================================
+# OmniLearn AI — Interactive Code Studio
+# Code generated by your STEM tutor will appear here in
+# full VS Code format with syntax highlighting and line numbers.
+# ==========================================================
+
+class Node:
+    """Represents a single node in a Singly Linked List."""
+    def __init__(self, data):
+        self.data = data
+        self.next = None
+
+
+class LinkedList:
+    """Singly Linked List data structure with core operations."""
+    def __init__(self):
+        self.head = None
+
+    def append(self, data):
+        """Append a new node to the end of the list."""
+        new_node = Node(data)
+        if not self.head:
+            self.head = new_node
+            return
+        last = self.head
+        while last.next:
+            last = last.next
+        last.next = new_node
+
+    def display(self):
+        """Print elements formatted cleanly."""
+        current = self.head
+        elements = []
+        while current:
+            elements.append(str(current.data))
+            current = current.next
+        print(" -> ".join(elements) + " -> None")
+
+
+# Example Usage:
+if __name__ == "__main__":
+    ll = LinkedList()
+    ll.append(10)
+    ll.append(20)
+    ll.append(30)
+    ll.display()
+</code></pre>
+              </div>
+
+              <!-- Simulated Terminal / Console Output -->
+              <div class="vscode-terminal" id="codeTerminal">
+                <div class="terminal-header">
+                  <div class="terminal-title">
+                    <i class="fa-solid fa-terminal"></i> <span>TERMINAL / OUTPUT</span>
+                  </div>
+                  <button class="icon-btn tiny" id="btnClearTerminal"><i class="fa-solid fa-ban"></i></button>
+                </div>
+                <div class="terminal-output" id="terminalOutput">
+                  <p class="term-line info">[OmniLearn AI Execution Console Ready]</p>
+                  <p class="term-line success">&gt; python solution.py</p>
+                  <p class="term-line text">10 -&gt; 20 -&gt; 30 -&gt; None</p>
+                  <p class="term-line info">[Program finished with exit code 0]</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ============================================================
+             VIEW 4: DEDICATED LIVE NOTES NOTEBOOK
+             ============================================================ -->
+        <section class="stage-view" id="viewNotes">
+          <div class="notes-page-header">
+            <div>
+              <h3><i class="fa-solid fa-book-open"></i> Live Lecture Study Notes</h3>
+              <p>Key takeaways, mathematical formulas, and step-by-step revision points automatically structured</p>
+            </div>
+            <div class="notes-actions">
+              <button class="action-pill-btn primary" id="btnExportAllNotes">
+                <i class="fa-solid fa-file-arrow-down"></i> <span>Download Notes (.md)</span>
+              </button>
+              <button class="action-pill-btn danger" id="btnClearAllNotes">
+                <i class="fa-solid fa-trash"></i> <span>Clear Notes</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Notes Grid Container -->
+          <div class="notes-grid" id="notesGrid">
+            <!-- Sample Auto Note Card -->
+            <div class="note-card sample">
+              <div class="note-card-header">
+                <span class="note-tag math"><i class="fa-solid fa-square-root-variable"></i> Concept / Formula</span>
+                <span class="note-time">Sample Note</span>
+              </div>
+              <h4>Ohm's Law & Circuit Analysis</h4>
+              <div class="note-body">
+                <p><strong>Core Takeaway:</strong> Defines the proportional relationship between Voltage, Current, and Resistance.</p>
+                <div class="formula-box">Formula: V = I × R</div>
+                <ul>
+                  <li><strong>Voltage (V):</strong> Electric potential difference in Volts.</li>
+                  <li><strong>Current (I):</strong> Flow rate of charge in Amperes.</li>
+                  <li><strong>Resistance (R):</strong> Circuit opposition in Ohms (Ω).</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+
+      <!-- ============================================================
+           RIGHT SIDEBAR: MULTI-TAB DRAWER
+           ============================================================ -->
+      <aside class="transcript-drawer open" id="transcriptDrawer">
+        
+        <!-- Drawer Header with Tabs -->
+        <div class="drawer-header">
+          <div class="drawer-tabs">
+            <button class="drawer-tab-btn active" data-drawer-tab="chat" id="drawerTabChat">
+              <i class="fa-solid fa-comments"></i> <span>Chat</span>
+            </button>
+            <button class="drawer-tab-btn" data-drawer-tab="notes" id="drawerTabNotes">
+              <i class="fa-solid fa-note-sticky"></i> <span>Notes</span>
+              <span class="tab-badge" id="sidebarNotesCount">0</span>
+            </button>
+            <button class="drawer-tab-btn" data-drawer-tab="stats" id="drawerTabStats">
+              <i class="fa-solid fa-chart-simple"></i> <span>Stats</span>
+            </button>
+          </div>
+          
+          <button id="closeDrawerBtn" class="icon-btn small" aria-label="Close Drawer">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+
+        <!-- TAB 1: Chat Stream -->
+        <div class="drawer-tab-content active" id="drawerContentChat">
+          <div class="transcript-stream" id="transcriptStream">
+            <div class="message system-msg">
+              <i class="fa-solid fa-graduation-cap"></i>
+              <span>OmniLearn AI is ready. Speak or type below to ask questions or study code.</span>
+            </div>
+          </div>
+
+          <!-- Interactive Chat Text Input Bar -->
+          <form class="chat-input-container" id="chatForm">
+            <div class="chat-input-wrapper">
+              <input type="text" id="chatInput" placeholder="Ask OmniLearn a question or ask for code..." autocomplete="off" />
+              <button type="submit" id="chatSendBtn" class="chat-send-btn" title="Send message" aria-label="Send message">
+                <i class="fa-solid fa-paper-plane"></i>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- TAB 2: Quick Sidebar Notes -->
+        <div class="drawer-tab-content" id="drawerContentNotes">
+          <div class="sidebar-notes-header">
+            <span>Saved Points</span>
+            <button class="text-btn" id="btnQuickExportNotes"><i class="fa-solid fa-download"></i> Save</button>
+          </div>
+          <div class="sidebar-notes-list" id="sidebarNotesList">
+            <div class="empty-notes-placeholder">
+              <i class="fa-regular fa-clipboard"></i>
+              <p>Notes will automatically appear here as OmniLearn teaches key concepts.</p>
+            </div>
           </div>
         </div>
+
+        <!-- TAB 3: Session Telemetry Stats -->
+        <div class="drawer-tab-content" id="drawerContentStats">
+          <div class="stats-panel">
+            <div class="stat-card">
+              <span class="stat-label">Connected Room</span>
+              <span class="stat-val" id="roomNameDisplay">room-demo</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">WebRTC Latency</span>
+              <span class="stat-val" id="latencyDisplay">-- ms</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Connection Quality</span>
+              <span class="stat-val highlight" id="qualityDisplay">Excellent</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">STT Model</span>
+              <span class="stat-val">Deepgram Nova-3</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">LLM Engine</span>
+              <span class="stat-val">OpenAI GPT-4.1-mini</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">TTS Voice</span>
+              <span class="stat-val">Cartesia Sonic-3</span>
+            </div>
+          </div>
+        </div>
+
       </aside>
     </main>
 
@@ -184,8 +484,8 @@
             <input type="text" id="roomInput" value="forage2-voice-room" placeholder="Enter room name">
           </div>
           <div class="form-group">
-            <label for="userNameInput">Your Name</label>
-            <input type="text" id="userNameInput" value="User" placeholder="Enter your display name">
+            <label for="userNameInput">Student Name</label>
+            <input type="text" id="userNameInput" value="Student" placeholder="Enter your display name">
           </div>
           <div class="form-group">
             <label for="serverUrlDisplay">LiveKit Gateway URL</label>
