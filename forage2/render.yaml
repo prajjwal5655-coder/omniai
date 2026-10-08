@@ -1,0 +1,44 @@
+services:
+  # ========================================================
+  # 1. OmniLearn Web Service (Frontend + LiveKit Token API)
+  # ========================================================
+  - type: web
+    name: omnilearn-web
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: PORT
+        value: 10000
+
+  # ========================================================
+  # 2. OmniLearn Voice & Whiteboard AI Agent Worker
+  # ========================================================
+  - type: worker
+    name: omnilearn-voice-worker
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python agent.py dev
+    envVars:
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
